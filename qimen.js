@@ -188,6 +188,32 @@ function buildResultFlex(result, topic) {
   };
 }
 
+// ผลสำหรับหน้าเว็บ: ส่งเฉพาะข้อความล้วน (ฝั่งเว็บแสดงด้วย textContent ไม่ใช้ HTML)
+function shapeForWeb(result, topic) {
+  const chart = result.chart || {};
+  const dirs = result.directions || {};
+  const bestName = dirs.best && dirs.best.palace;
+  const avoidName = dirs.avoid && dirs.avoid.palace;
+  const dirText = (d) => (d ? { direction: d.direction_th || d.direction || '', door: DOOR_TH[d.door] ? `${DOOR_TH[d.door]} (${d.door})` : d.door || '' } : null);
+  return {
+    topic: topic.label,
+    from: beijingToThai(chart.time && chart.time.valid_from),
+    until: beijingToThai(chart.time && chart.time.valid_until),
+    grid: GRID.map((row) => row.map((n) => {
+      const p = (chart.palaces || {})[n] || {};
+      return {
+        dir: DIR_SHORT[p.direction] || '',
+        door: p.door ? `${p.door}門` : '中',
+        sub: p.door ? `${p.star || ''}${p.god ? ' ' + p.god : ''}`.trim() : '',
+        kind: n === bestName ? 'best' : n === avoidName ? 'avoid' : '',
+      };
+    })),
+    best: dirText(dirs.best),
+    avoid: dirText(dirs.avoid),
+    reading: String(result.reading || '').trim().slice(0, 3000),
+  };
+}
+
 let defaultLimiter = null;
 function getDefaultLimiter() {
   if (!defaultLimiter) {
@@ -473,5 +499,5 @@ async function handleQimenText(text, userId, opts = {}) {
 
 module.exports = {
   handleQimenText, settleOrder, buildTopicMenuFlex, buildResultFlex, buildPayFlex, fetchReading, beijingToThai,
-  TOPICS, QIMEN_LIMIT_TEXT, BUY_TEXT, CHECK_TEXT, isEnabled,
+  shapeForWeb, TOPICS, QIMEN_LIMIT_TEXT, BUY_TEXT, CHECK_TEXT, isEnabled,
 };

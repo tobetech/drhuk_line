@@ -86,6 +86,11 @@ vercel --prod
 ### ดูฤกษ์ยามเพิ่มผ่านเว็บ
 เมื่อใช้สิทธิ์ฟรีของวันแล้ว บอทส่งปุ่มลิงก์ไปหน้าเว็บที่ตั้งใน `QIMEN_WEB_URL` (https เท่านั้น; ถ้าว่างจะแจ้งว่า "เร็วๆ นี้") ไม่รับชำระเงินใน LINE
 
+### หน้าเว็บดูฤกษ์ยาม (qimen.dr-huk.com) — 19 บาท/ครั้ง ผ่าน Ksher QR
+ไฟล์: `qimen_web.js` (API `/api/qimen/*`), `public/qimen/` (หน้าเว็บ). ไม่มีบัญชีผู้ใช้: เลือกหัวข้อ → สแกน QR (นับถอยหลัง 10 นาที) → หน้าเว็บ poll ทุก 4 วินาที + webhook จาก gateway → แสดงผลทันทีเมื่อจ่ายแล้ว ผลเก็บ 24 ชม. (`data/qimen_web.json`) เปิดซ้ำได้ด้วยโทเค็นในเบราว์เซอร์
+ตั้งค่า `.env`: `QIMEN_WEB_ENABLED=true`, `QIMEN_WEB_HOST=qimen.dr-huk.com`, `QIMEN_PRICE_THB=19`, `QIMEN_NOTIFY_SECRET` และ `QIMEN_WEB_URL=https://qimen.dr-huk.com` (ลิงก์ที่บอท LINE ส่งให้) ที่ gateway ต้องตั้ง `price_qr` ของ license บอทเป็น 19 ให้ตรงกัน
+Caddy: เพิ่มโดเมน qimen.dr-huk.com ชี้ไปที่บอท (พอร์ต 3010) เหมือนบล็อกของ line.dr-huk.com และตั้ง DNS A record ไปที่ IP droplet
+
 ### (ไม่ใช้งานแล้ว) ชำระเงินใน LINE 19 บาท/ครั้ง
 โค้ดยังอยู่แต่ปิดเป็นค่าเริ่มต้น (`QIMEN_PAY_ENABLED=false`)
 เปิดด้วย `QIMEN_PAY_ENABLED=true` ต้องตั้ง `"price_qr": 19` ใน license ของบอทที่ gateway (บอทจะไม่ยอมแสดง QR ถ้าราคาที่ gateway ไม่ตรงกับ `QIMEN_PRICE_THB`)

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node test.js && node test_qimen.js && node test_qimen_pay.js && node test_qimen_notify.js",
+    "test": "node test.js && node test_qimen.js && node test_qimen_pay.js && node test_qimen_notify.js && node test_qimen_web.js",
     "chat": "node dev-chat.js"
   },
   "engines": {

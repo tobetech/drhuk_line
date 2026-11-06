@@ -5,6 +5,7 @@ const line = require('@line/bot-sdk');
 const { handleText, HELP_TEXT } = require('./fortune');
 const { handleQimenText, settleOrder } = require('./qimen');
 const { getDefaultPayStore, qrPngBuffer, verifyNotify } = require('./qimen_pay');
+const { createWebRouter, settleWebByGatewayId } = require('./qimen_web');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
@@ -21,8 +22,24 @@ const client = new line.messagingApi.MessagingApiClient({
 });
 
 const app = express();
+app.set('trust proxy', 1); // อยู่หลัง Caddy: ใช้ IP จริงจาก X-Forwarded-For (ใช้จำกัดอัตราสร้างออเดอร์)
 
+// หน้าเว็บฤกษ์ยามฉีเหมิน: ที่ /qimen และที่ราก (/) ของโดเมน QIMEN_WEB_HOST (เช่น qimen.dr-huk.com)
+const qimenHost = (process.env.QIMEN_WEB_HOST || '').toLowerCase();
+const qimenDir = path.join(__dirname, 'public', 'qimen');
+const qimenPage = (_req, res) => {
+  res.set({
+    'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'no-referrer',
+  });
+  res.sendFile(path.join(qimenDir, 'index.html'));
+};
+app.get('/', (req, res, next) => (qimenHost && req.hostname === qimenHost ? qimenPage(req, res) : next()));
 app.get('/', (_req, res) => res.send('Siamsi LINE bot is running'));
+app.get('/qimen', qimenPage);
+app.use('/qimen', express.static(qimenDir, { index: false, maxAge: '1h' }));
+app.use('/api/qimen', createWebRouter({ fetchFn: (...a) => (app.get('qimenFetch') || fetch)(...a) }));
 
 // หน้านโยบายและข้อกำหนด: dr-huk.com/privacy และ dr-huk.com/terms
 const pub = path.join(__dirname, 'public');
@@ -38,6 +55,8 @@ app.post('/internal/payment-notify', express.raw({ type: '*/*', limit: '4kb' }),
   let body = {};
   try { body = JSON.parse(req.body.toString('utf8')); } catch (_) { return res.sendStatus(400); }
   if (!verifyNotify(secret, body.ts, body.order_id, req.get('X-Notify-Signature'))) return res.sendStatus(401);
+  const webResult = await settleWebByGatewayId(body.order_id, { fetchFn: app.get('qimenFetch') });
+  if (webResult !== undefined) return res.json({ ok: true, result: webResult });
   const result = await settleOrder(body.order_id, {
     payStore: getDefaultPayStore(),
     fetchFn: app.get('qimenFetch'),

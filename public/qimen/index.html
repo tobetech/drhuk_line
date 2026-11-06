@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#FFFCF7">
+<meta name="robots" content="noindex">
+<title>ดูฤกษ์ยามฉีเหมิน 奇門遁甲 | Dr.Huk พี่ฮูก</title>
+<meta name="description" content="ดูฤกษ์ยามตามตำราฉีเหมิน ผังทิศและจังหวะตามเวลาที่คุณกดดู ชำระ 19 บาทผ่าน QR แล้วดูผลได้ทันที">
+<link rel="stylesheet" href="/qimen/qimen.css">
+</head><body>
+<header class="top">
+  <a class="brand" href="https://www.dr-huk.com/">DR.HUK <small>พี่ฮูก</small></a>
+  <nav><a href="https://www.dr-huk.com/shop.html">ร้านค้า ↗</a></nav>
+</header>
+<main id="main">
+  <p class="crumb"><a href="https://www.dr-huk.com/shop.html">DR.HUK / ร้านค้า</a> / ฤกษ์ยามฉีเหมิน</p>
+
+  <section id="step-pick">
+    <h1>🧭 ดูฤกษ์ยามฉีเหมิน</h1>
+    <p class="lead">奇門遁甲 · จัดผังทิศและจังหวะตามเวลาที่คุณกดดู พร้อมคำแนะนำตามหัวข้อที่อยากรู้</p>
+    <h2>เลือกเรื่องที่อยากรู้</h2>
+    <div id="topics" class="topics" role="radiogroup" aria-label="หัวข้อ"></div>
+    <p id="pick-error" class="error" role="alert" hidden></p>
+    <button id="buy" class="primary" type="button" disabled>เลือกหัวข้อก่อน</button>
+    <ul class="notes">
+      <li>ชำระด้วย QR Code (PromptPay / แอปธนาคาร) ระบบแสดงผลให้อัตโนมัติเมื่อชำระเงินแล้ว</li>
+      <li>ผังจัดจากเวลาที่ชำระเงินสำเร็จ ใช้ได้ตามช่วงเวลาที่ระบุในผลลัพธ์</li>
+      <li>เพื่อความบันเทิงและเป็นแนวทางประกอบการตัดสินใจเท่านั้น · <a href="/terms" target="_blank" rel="noopener">ข้อกำหนด</a> · <a href="/privacy" target="_blank" rel="noopener">ความเป็นส่วนตัว</a></li>
+    </ul>
+  </section>
+
+  <section id="step-pay" hidden>
+    <h1>ชำระเงิน <span id="pay-amount"></span> บาท</h1>
+    <p class="lead">สแกน QR ด้วยแอปธนาคาร หรือบันทึกรูปไปสแกนจากอีกเครื่อง</p>
+    <div class="qrbox"><img id="qr" alt="QR Code สำหรับชำระเงิน" width="280" height="280"></div>
+    <p class="timer">⏳ QR ใช้ได้อีก <strong id="countdown">--:--</strong> นาที</p>
+    <p id="pay-status" class="status" role="status">รอการชำระเงิน…</p>
+    <p class="notes-small">เมื่อชำระแล้วหน้านี้แสดงผลเอง ไม่ต้องกดอะไร · อย่าปิดหน้านี้ หากปิดไปแล้วเปิดลิงก์นี้ใหม่ในเบราว์เซอร์เดิมเพื่อดูผลต่อได้<br>รหัสอ้างอิง <span id="ref">-</span></p>
+    <button id="cancel" class="secondary" type="button">ยกเลิก</button>
+  </section>
+
+  <section id="step-wait" hidden>
+    <h1>ได้รับการชำระเงินแล้ว ✅</h1>
+    <p class="lead" id="wait-text">กำลังจัดผังฉีเหมินและเขียนคำแนะนำ ใช้เวลาประมาณ 10–40 วินาที…</p>
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="notes-small">รหัสอ้างอิง <span id="ref2">-</span></p>
+  </section>
+
+  <section id="step-result" hidden>
+    <h1 id="res-title">🧭 ฤกษ์ยาม</h1>
+    <p class="lead" id="res-time"></p>
+    <div id="grid" class="grid" role="table" aria-label="ผังฉีเหมิน ทิศใต้อยู่ด้านบน"></div>
+    <p class="legend"><span class="sw best"></span> ทิศที่เอื้อ <span class="sw avoid"></span> ทิศที่ควรเลี่ยง · ผัง: ทิศใต้อยู่ด้านบน</p>
+    <div id="dirs" class="dirs"></div>
+    <h2>คำแนะนำ</h2>
+    <div id="reading" class="reading"></div>
+    <p class="notes-small">ผลนี้เปิดดูซ้ำได้ในเบราว์เซอร์นี้ภายใน 24 ชั่วโมง · รหัสอ้างอิง <span id="ref3">-</span></p>
+    <button id="again" class="secondary" type="button">ดูหัวข้ออื่น</button>
+  </section>
+
+  <section id="step-end" hidden>
+    <h1 id="end-title"></h1>
+    <p class="lead" id="end-text"></p>
+    <button id="restart" class="primary" type="button">กลับไปเลือกหัวข้อ</button>
+  </section>
+</main>
+<footer class="foot">© 2026 Dr.Huk · Tobe Technology Network Co.,Ltd. · <a href="/terms">ข้อกำหนด</a> · <a href="/privacy">ความเป็นส่วนตัว</a></footer>
+<script src="/qimen/app.js"></script>
+</body></html>
