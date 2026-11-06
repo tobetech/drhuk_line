@@ -2,6 +2,9 @@ const path = require('path');
 const { FORTUNES, LEVELS } = require('./fortunes');
 const { createFileLimiter } = require('./draws');
 
+// ที่อยู่สาธารณะของบอท ใช้ประกอบ URL รูปแอนิเมชัน (LINE ต้องดึงรูปผ่าน HTTPS)
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://line.dr-huk.com').replace(/\/+$/, '');
+
 const DISCLAIMER = 'คำทำนายเพื่อความบันเทิงและเป็นกำลังใจ โปรดใช้วิจารณญาณในการตัดสินใจเรื่องสำคัญ';
 
 // วันที่ตามเวลาไทย (YYYY-MM-DD)
@@ -85,6 +88,44 @@ function buildFlex(f) {
   };
 }
 
+// การ์ดตอน "กำลังเขย่า" มีภาพกระบอกเซียมซีขยับได้ (APNG ต้องไม่เกิน 300 KB ตามข้อกำหนดของ LINE)
+function buildShakeFlex() {
+  return {
+    type: 'flex',
+    altText: '🙏 ตั้งจิตอธิษฐาน... กำลังเขย่ากระบอกเซียมซี 🎋',
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        paddingAll: '0px',
+        backgroundColor: '#FFF3D6',
+        contents: [
+          {
+            type: 'image',
+            url: `${PUBLIC_BASE_URL}/assets/shake.png`,
+            size: 'full',
+            aspectRatio: '4:3',
+            aspectMode: 'cover',
+            animated: true,
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            paddingAll: 'md',
+            spacing: 'xs',
+            contents: [
+              { type: 'text', text: '🙏 ตั้งจิตอธิษฐาน...', align: 'center', weight: 'bold', color: '#8F2320' },
+              { type: 'text', text: 'กำลังเขย่ากระบอกเซียมซี 🎋', align: 'center', size: 'sm', color: '#5A3E1B' },
+            ],
+          },
+        ],
+      },
+    },
+  };
+}
+
 const HELP_TEXT = [
   '🙏 ยินดีต้อนรับสู่เซียมซีออนไลน์ (60 ใบ)',
   '',
@@ -147,7 +188,7 @@ function handleText(text, userId, now = new Date(), limiter) {
       }
     }
     return [
-      { type: 'text', text: '🙏 ตั้งจิตอธิษฐาน... กำลังเขย่ากระบอกเซียมซี 🎋' },
+      buildShakeFlex(),
       buildFlex(pickDaily(userId || 'anonymous', now)),
     ];
   }
@@ -159,4 +200,4 @@ function handleText(text, userId, now = new Date(), limiter) {
   return null; // ข้อความอื่น ปล่อยให้แอดมินตอบเอง
 }
 
-module.exports = { handleText, buildFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT, LIMIT_TEXT };
+module.exports = { handleText, buildFlex, buildShakeFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT, LIMIT_TEXT };

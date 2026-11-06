@@ -8,6 +8,7 @@ function show(m) {
   if (m.type === 'text') return console.log(`\n🤖 ${m.text}\n`);
   if (m.type === 'flex') {
     const c = m.contents;
+    if (!c.header) return console.log(`\n🤖 [ภาพเคลื่อนไหวกระบอกเซียมซีเขย่า] ${m.altText}\n`);
     const t = (b) => b.contents.filter((x) => x.type === 'text').map((x) => x.text);
     console.log('\n🤖 [การ์ด Flex]');
     console.log('  ' + t(c.header).join(' | '));

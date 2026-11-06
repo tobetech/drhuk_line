@@ -26,6 +26,7 @@ app.get('/', (_req, res) => res.send('Siamsi LINE bot is running'));
 const pub = path.join(__dirname, 'public');
 app.get('/privacy', (_req, res) => res.sendFile(path.join(pub, 'privacy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(pub, 'terms.html')));
+app.use('/assets', express.static(path.join(pub, 'assets'), { maxAge: '7d' }));
 app.get('/style.css', (_req, res) => res.sendFile(path.join(pub, 'style.css')));
 
 // middleware ตรวจ X-Line-Signature ให้อัตโนมัติ (ห้ามใส่ express.json() ก่อน route นี้)
