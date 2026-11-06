@@ -46,6 +46,8 @@ const apngPath = path.join(__dirname, 'public', 'assets', 'shake.png');
 const apngBuf = fs.readFileSync(apngPath);
 assert.ok(apngBuf.includes('acTL'), 'ไฟล์ต้องเป็น APNG');
 assert.ok(apngBuf.length <= 300 * 1024, 'APNG ต้องไม่เกิน 300 KB');
+const plays = apngBuf.readUInt32BE(apngBuf.indexOf('acTL') + 8);
+assert.ok(plays >= 1 && plays <= 3, `APNG ต้องเล่นจำนวนครั้งจำกัด (ตอนนี้ ${plays}, 0 = วนไม่รู้จบ)`);
 assert.ok(!JSON.stringify(first).includes('สุ่ม'), 'ต้องไม่มีปุ่ม/ข้อความสุ่มใหม่');
 const again = handleText('เสี่ยงเซียมซี', 'U1', day1, lim);
 assert.ok(again.length === 1 && again[0].text.includes('จำกัดการเสี่ยงวันละ 1 ครั้ง'));

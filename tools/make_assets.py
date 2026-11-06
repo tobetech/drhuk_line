@@ -48,7 +48,7 @@ def canister_layer(rattle=None):
 
     # ปากกระบอก (วงรีสีเข้ม) แล้วไม้เซียมซีโผล่ขึ้นมา
     d.ellipse(s(190, 121, 290, 137), fill=DARK)
-    lengths = [105, 117, 99, 123, 109, 95, 119, 107, 101]
+    lengths = [x - 35 for x in [105, 117, 99, 123, 109, 95, 119, 107, 101]]   # สั้นลงเพื่อให้ไม้ที่โผล่ไม่ชนขอบภาพ
     for i in range(9):
         xb = 204 + 9 * i
         a = math.radians((i - 4) * 3.4)
@@ -74,36 +74,42 @@ def sparkle(d, cx, cy, r, col):
         pts.append((cx + rr * math.cos(ang), cy + rr * math.sin(ang)))
     d.polygon(pts, fill=col)
 
-def make_frame(t):
-    ph = 2 * math.pi * 2 * t                    # เขย่า 2 รอบต่อ 1 ลูป
-    rattle = [9 * math.sin(ph * 1.0 + i * 0.9) for i in range(9)]
+N_FRAMES = 24          # 0-12 เขย่าเต็มแรง, 13-20 แผ่วลง, 21-23 นิ่งและไม้โผล่
+PLAYS = 2              # เล่น 2 รอบแล้วหยุดที่เฟรมสุดท้าย
+
+def make_frame(i, n=N_FRAMES):
+    ph = 2 * math.pi * i / 8                      # 8 เฟรมต่อการเขย่า 1 รอบ
+    env = 1.0 if i <= 12 else max(0.0, 1.0 - (i - 12) / 8.0)   # แรงเขย่าค่อยๆ ลดลง
+    pop = {19: 6, 20: 18, 21: 30, 22: 36, 23: 34}.get(i, 0)     # ไม้ใบที่ 4 โผล่ขึ้นมา
+    rattle = [9 * env * math.sin(ph + k * 0.9) for k in range(9)]
+    rattle[3] += pop
     layer = canister_layer(rattle)
-    ang = 13 * math.sin(ph)
-    dx, dy = 12 * math.sin(ph), -6 * abs(math.sin(ph))
+    ang = 13 * env * math.sin(ph)
+    dx, dy = 12 * env * math.sin(ph), -6 * env * abs(math.sin(ph))
     bg = Image.new('RGBA', (W * S, H * S), CREAM + (255,))
     d = ImageDraw.Draw(bg, 'RGBA')
-    # เงาใต้กระบอก
-    sh = 70 - 8 * abs(math.sin(ph))
+    sh = 70 - 8 * env * abs(math.sin(ph))
     d.ellipse([int((240 + dx * 0.5 - sh) * S), int(334 * S), int((240 + dx * 0.5 + sh) * S), int(352 * S)], fill=(214, 190, 140, 150))
-    # ประกายระยิบ
+    boost = 1.0 + (0.8 if i >= 20 else 0)          # ประกายเด่นขึ้นตอนได้ใบ
     for k, (cx, cy) in enumerate([(78, 84), (414, 104), (392, 262), (66, 246), (330, 52)]):
-        r = 5 + 6 * (0.5 + 0.5 * math.sin(ph + k * 1.7))
+        r = (5 + 6 * (0.5 + 0.5 * math.sin(ph + k * 1.7))) * boost
         sparkle(d, cx * S, cy * S, r * S, (242, 193, 78, 255))
-    # เส้นลมแสดงการเขย่า
-    v = abs(math.cos(ph))
-    col = (205, 160, 80, int(40 + 190 * v))
-    for side in (-1, 1):
-        for j in range(3):
-            x0 = 240 + side * (92 + j * 17)
-            d.line([(int(x0 * S), int((178 + j * 6) * S)), (int((x0 + side * 6) * S), int((222) * S)), (int(x0 * S), int((266 - j * 6) * S))], fill=col, width=4 * S, joint='curve')
+    v = abs(math.cos(ph)) * env
+    if v > 0.05:
+        col = (205, 160, 80, int(40 + 190 * v))
+        for side in (-1, 1):
+            for j in range(3):
+                x0 = 240 + side * (92 + j * 17)
+                d.line([(int(x0 * S), int((178 + j * 6) * S)), (int((x0 + side * 6) * S), int(222 * S)), (int(x0 * S), int((266 - j * 6) * S))], fill=col, width=4 * S, joint='curve')
     rot = layer.rotate(ang, center=(PIVOT[0] * S, PIVOT[1] * S), resample=Image.BICUBIC, translate=(int(dx * S), int(dy * S)))
     bg.alpha_composite(rot)
     return bg.resize((W, H), Image.LANCZOS).convert('RGB')
 
-def build_apng(path, n=16, delay=70):
-    frames = [make_frame(i / n) for i in range(n)]
-    pal = [f.quantize(colors=56, method=Image.MEDIANCUT, dither=Image.NONE) for f in frames]
-    pal[0].save(path, save_all=True, append_images=pal[1:], duration=delay, loop=0, format='PNG', optimize=True)
+def build_apng(path, n=N_FRAMES, delay=90, hold=1500):
+    frames = [make_frame(i, n) for i in range(n)]
+    pal = [f.quantize(colors=40, method=Image.MEDIANCUT, dither=Image.NONE) for f in frames]
+    durations = [delay] * (n - 1) + [hold]         # เฟรมสุดท้ายค้างไว้
+    pal[0].save(path, save_all=True, append_images=pal[1:], duration=durations, loop=PLAYS, format='PNG', optimize=True)
     return frames
 
 def build_richmenu(path):
@@ -118,7 +124,7 @@ def build_richmenu(path):
     d.rectangle([1250, 0, RW, RH], fill=CREAM)       # ด้านขวาครีม
     GOLD, LGOLD, DREDT = (227, 178, 60), (246, 215, 122), (143, 35, 32)
     # ไอคอนกระบอกเซียมซี (ซ้าย)
-    ic = canister_layer().crop((150 * S, 18 * S, 330 * S, 336 * S))
+    ic = canister_layer().crop((150 * S, 34 * S, 330 * S, 336 * S))
     th = 700
     ic = ic.resize((int(ic.width * th / ic.height), th), Image.LANCZOS)
     im.paste(ic, (90, (RH - th) // 2), ic)
@@ -147,6 +153,6 @@ if __name__ == '__main__':
     print('Rich menu', os.path.getsize(rm) // 1024, 'KB')
     # แผ่นตรวจดูเฟรม (ไม่ได้ใช้งานจริง)
     sheet = Image.new('RGB', (W * 4, H * 2))
-    for i, k in enumerate([0, 2, 4, 6, 8, 10, 12, 14]):
+    for i, k in enumerate([0, 3, 9, 14, 18, 20, 22, 23]):
         sheet.paste(frames[k], ((i % 4) * W, (i // 4) * H))
     sheet.save('/tmp/shake_sheet.png')
