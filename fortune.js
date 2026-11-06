@@ -1,4 +1,6 @@
+const path = require('path');
 const { FORTUNES, LEVELS } = require('./fortunes');
+const { createFileLimiter } = require('./draws');
 
 const DISCLAIMER = 'คำทำนายเพื่อความบันเทิงและเป็นกำลังใจ โปรดใช้วิจารณญาณในการตัดสินใจเรื่องสำคัญ';
 
@@ -79,18 +81,6 @@ function buildFlex(f) {
           { type: 'text', text: DISCLAIMER, size: 'xxs', color: '#999999', wrap: true, margin: 'md' },
         ],
       },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        contents: [
-          {
-            type: 'button',
-            style: 'link',
-            height: 'sm',
-            action: { type: 'message', label: 'ดูใบอื่นๆ (สุ่มใหม่)', text: 'สุ่มเซียมซี' },
-          },
-        ],
-      },
     },
   };
 }
@@ -99,18 +89,21 @@ const HELP_TEXT = [
   '🙏 ยินดีต้อนรับสู่เซียมซีออนไลน์ (60 ใบ)',
   '',
   'พิมพ์คำสั่งได้เลย:',
-  '• "เสี่ยงเซียมซี" – รับคำทำนายประจำวัน (วันละ 1 ใบ)',
-  '• "สุ่มเซียมซี" – สุ่มใบใหม่ได้เรื่อยๆ',
-  '• "ใบที่ 12" หรือ "12" – ดูใบที่ต้องการ (1-60)',
+  '• "เสี่ยงเซียมซี" – รับคำทำนายประจำวัน',
   '• "วิธีใช้" – ดูข้อความนี้อีกครั้ง',
   '',
+  'จำกัดการเสี่ยงวันละ 1 ครั้ง (รีเซ็ตเที่ยงคืนเวลาไทย)',
   'ตั้งจิตอธิษฐานก่อนเสี่ยงทุกครั้งนะคะ 🪷',
+].join('\n');
+
+const LIMIT_TEXT = [
+  '🙏 จำกัดการเสี่ยงวันละ 1 ครั้ง',
+  'วันนี้คุณเสี่ยงเซียมซีไปแล้ว พรุ่งนี้มาเสี่ยงใหม่ได้ตั้งแต่เที่ยงคืนค่ะ',
 ].join('\n');
 
 const QUICK_REPLY = {
   items: [
     { type: 'action', action: { type: 'message', label: '🎋 เสี่ยงเซียมซี', text: 'เสี่ยงเซียมซี' } },
-    { type: 'action', action: { type: 'message', label: '🎲 สุ่มใหม่', text: 'สุ่มเซียมซี' } },
     { type: 'action', action: { type: 'message', label: '❓ วิธีใช้', text: 'วิธีใช้' } },
   ],
 };
@@ -119,27 +112,43 @@ function withQuickReply(msg) {
   return { ...msg, quickReply: QUICK_REPLY };
 }
 
+let defaultLimiter = null;
+function getDefaultLimiter() {
+  if (!defaultLimiter) {
+    const dir = process.env.DATA_DIR || path.join(__dirname, 'data');
+    defaultLimiter = createFileLimiter({
+      file: path.join(dir, 'draws.json'),
+      salt: process.env.LINE_CHANNEL_SECRET || 'siamsi',
+    });
+  }
+  return defaultLimiter;
+}
+
 // รับข้อความ คืน array ของ message ที่จะตอบกลับ (หรือ null ถ้าไม่ต้องตอบ)
-function handleText(text, userId, now = new Date()) {
+function handleText(text, userId, now = new Date(), limiter) {
   const t = (text || '').trim().replace(/\s+/g, ' ');
   if (!t) return null;
 
-  const num = t.match(/^(?:ใบที่|ใบ|เบอร์)?\s*(\d{1,3})$/);
-  if (num) {
-    const f = getByNumber(Number(num[1]));
-    if (!f) return [withQuickReply({ type: 'text', text: 'มีเซียมซีให้เลือกเฉพาะใบที่ 1 ถึง 60 ค่ะ 🙏' })];
-    return [withQuickReply(buildFlex(f))];
-  }
-
-  if (/สุ่ม/.test(t)) {
-    return [withQuickReply(buildFlex(pickRandom()))];
+  // ดูใบตามเลข ปิดไว้เพราะเลี่ยงข้อจำกัดวันละ 1 ครั้งได้ (เปิดด้วย ALLOW_LOOKUP=true)
+  if (process.env.ALLOW_LOOKUP === 'true') {
+    const num = t.match(/^(?:ใบที่|ใบ|เบอร์)?\s*(\d{1,3})$/);
+    if (num) {
+      const f = getByNumber(Number(num[1]));
+      if (!f) return [withQuickReply({ type: 'text', text: 'มีเซียมซีให้เลือกเฉพาะใบที่ 1 ถึง 60 ค่ะ 🙏' })];
+      return [buildFlex(f)];
+    }
   }
 
   if (/เสี่ยง|เซียมซี|ดูดวง|ทำนาย|เขย่า/.test(t)) {
-    const f = pickDaily(userId || 'anonymous', now);
+    if (userId) {
+      const lim = limiter || getDefaultLimiter();
+      if (!lim.tryDraw(userId, bangkokDate(now))) {
+        return [withQuickReply({ type: 'text', text: LIMIT_TEXT })];
+      }
+    }
     return [
       { type: 'text', text: '🙏 ตั้งจิตอธิษฐาน... กำลังเขย่ากระบอกเซียมซี 🎋' },
-      withQuickReply(buildFlex(f)),
+      buildFlex(pickDaily(userId || 'anonymous', now)),
     ];
   }
 
@@ -150,4 +159,4 @@ function handleText(text, userId, now = new Date()) {
   return null; // ข้อความอื่น ปล่อยให้แอดมินตอบเอง
 }
 
-module.exports = { handleText, buildFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT };
+module.exports = { handleText, buildFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT, LIMIT_TEXT };
