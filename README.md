@@ -57,3 +57,13 @@ vercel --prod
 ```
 จะได้ URL เช่น `https://siamsi-bot.vercel.app` → ตั้ง Webhook เป็น `https://siamsi-bot.vercel.app/webhook`
 ใช้โดเมนตัวเองได้ที่ Vercel → Project → Settings → Domains (เช่น `bot.dr-huk.com`)
+
+## Deploy บน DigitalOcean Droplet (nginx + pm2 + Let's Encrypt)
+1. DNS: สร้าง **A record** ชื่อ `line` ชี้ไปที่ IP ของ droplet (ไม่แตะ record เดิมของ `@` / `www`)
+2. บน droplet: `git clone https://github.com/tobetech/drhuk_line.git /opt/drhuk_line && cd /opt/drhuk_line`
+   (repo private ต้องใช้ deploy key หรือ token — หรืออัปโหลดด้วย `rsync -av --exclude node_modules ./ root@IP:/opt/drhuk_line/`)
+3. `sudo CERT_EMAIL=you@example.com bash deploy/setup.sh` (สคริปต์จะถามรหัส LINE ถ้ายังไม่มี .env)
+4. ตั้ง Webhook ใน LINE เป็น `https://line.dr-huk.com/webhook`
+5. อัปเดตครั้งต่อไป: `bash deploy/update.sh`
+
+ตัวแปรที่ปรับได้: `DOMAIN`, `APP_PORT` (ค่าเริ่มต้น 3010), `CERT_EMAIL`
