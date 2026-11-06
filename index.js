@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const line = require('@line/bot-sdk');
 const { handleText, HELP_TEXT } = require('./fortune');
+const { handleQimenText } = require('./qimen');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
@@ -51,7 +52,19 @@ async function handleEvent(event) {
   }
   if (event.type !== 'message' || event.message.type !== 'text') return;
 
-  const messages = handleText(event.message.text, event.source?.userId);
+  const userId = event.source?.userId;
+
+  // ดูฤกษ์ยามฉีเหมิน (เรียกเซิร์ฟเวอร์กลาง ใช้เวลาหลายวินาที) ตอบด้วย reply token เดิมเมื่อได้ผล
+  const qimen = await handleQimenText(event.message.text, userId, {
+    onStart: () => {
+      if (userId && event.source?.type === 'user') {
+        client.showLoadingAnimation({ chatId: userId, loadingSeconds: 30 }).catch(() => {});
+      }
+    },
+  });
+  if (qimen) return client.replyMessage({ replyToken: event.replyToken, messages: qimen });
+
+  const messages = handleText(event.message.text, userId);
   if (!messages) return;
   return client.replyMessage({ replyToken: event.replyToken, messages });
 }

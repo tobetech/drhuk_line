@@ -74,3 +74,11 @@ vercel --prod
 5. อัปเดตครั้งต่อไป: `bash deploy/update.sh`
 
 ตัวแปรที่ปรับได้: `DOMAIN`, `APP_PORT` (ค่าเริ่มต้น 3010), `CERT_EMAIL`
+
+
+## ดูฤกษ์ยามฉีเหมิน (ฟีเจอร์เสริม)
+
+บอทเรียกเซิร์ฟเวอร์กลาง `qimen.tobe-tech.com` ที่ endpoint `POST /v1/line-reading` (คำนวณผัง + AI ที่ฝั่ง gateway)
+ตั้งค่าใน `.env`: `QIMEN_LICENSE_KEY` (license ที่สร้างให้บอทโดยเฉพาะ), `QIMEN_MACHINE_ID=line-bot`, `QIMEN_GATEWAY_URL`
+ไม่ใส่ `QIMEN_LICENSE_KEY` = ปิดฟีเจอร์ ผู้ใช้พิมพ์ "ดูฤกษ์ยาม" เลือกหัวข้อ ดูได้วันละ 1 ครั้ง (เก็บที่ `data/qimen_draws.json`)
+นับสิทธิ์เมื่อได้คำแนะนำสำเร็จเท่านั้น ถ้า gateway/AI ขัดข้องจะลองใหม่ได้ ทดสอบ: `npm test` และ `npm run chat` (พิมพ์ ดูฤกษ์ยาม)

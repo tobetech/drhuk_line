@@ -64,7 +64,7 @@ assert.ok(again[0].quickReply.items[0].action.text === 'เปิดใบทำ
 assert.ok(handleText('เสี่ยงเซียมซี', 'U1', day2, lim)[0].type === 'flex', 'ข้ามวันเสี่ยงได้ใหม่');
 assert.strictEqual(handleText('เปิดใบทำนาย', 'U1', day2, lim)[0].type, 'flex');
 assert.strictEqual(handleText('ใบที่ 12', 'U9', day1, lim), null, 'ค้นตามเลขต้องปิดอยู่');
-assert.ok(handleText('วิธีใช้', 'U1', day1, lim)[0].text.includes('วันละ 1 ครั้ง'));
+assert.ok(handleText('วิธีใช้', 'U1', day1, lim)[0].text.includes('อย่างละ 1 ครั้งต่อวัน'));
 process.env.ALLOW_LOOKUP = 'true';
 assert.ok(handleText('ใบที่ 12', 'U9', day1, lim)[0].altText.includes('ใบที่ 12'));
 delete process.env.ALLOW_LOOKUP;
