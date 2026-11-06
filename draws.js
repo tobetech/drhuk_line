@@ -29,6 +29,9 @@ function createFileLimiter({ file, salt }) {
   }
 
   return {
+    hasDrawn(userId, date) {
+      return state.date === date && state.users.has(hash(userId));
+    },
     // คืน true ถ้าเป็นการเสี่ยงครั้งแรกของวันนี้ (และบันทึกไว้) คืน false ถ้าเสี่ยงไปแล้ว
     tryDraw(userId, date) {
       if (state.date !== date) state = { date, users: new Set() };
@@ -46,6 +49,7 @@ function createMemoryLimiter() {
   let date = '';
   let users = new Set();
   return {
+    hasDrawn(userId, d) { return date === d && users.has(userId); },
     tryDraw(userId, d) {
       if (date !== d) { date = d; users = new Set(); }
       if (users.has(userId)) return false;

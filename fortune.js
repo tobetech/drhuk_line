@@ -5,6 +5,8 @@ const { createFileLimiter } = require('./draws');
 // ที่อยู่สาธารณะของบอท ใช้ประกอบ URL รูปแอนิเมชัน (LINE ต้องดึงรูปผ่าน HTTPS)
 const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || 'https://line.dr-huk.com').replace(/\/+$/, '');
 
+const REVEAL_TEXT = 'เปิดใบทำนาย';
+
 const DISCLAIMER = 'คำทำนายเพื่อความบันเทิงและเป็นกำลังใจ โปรดใช้วิจารณญาณในการตัดสินใจเรื่องสำคัญ';
 
 // วันที่ตามเวลาไทย (YYYY-MM-DD)
@@ -122,6 +124,21 @@ function buildShakeFlex() {
           },
         ],
       },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#FFF3D6',
+        paddingTop: '0px',
+        contents: [
+          {
+            type: 'button',
+            style: 'primary',
+            color: '#B8322A',
+            height: 'sm',
+            action: { type: 'message', label: '🎋 เปิดใบทำนาย', text: REVEAL_TEXT },
+          },
+        ],
+      },
     },
   };
 }
@@ -140,7 +157,12 @@ const HELP_TEXT = [
 const LIMIT_TEXT = [
   '🙏 จำกัดการเสี่ยงวันละ 1 ครั้ง',
   'วันนี้คุณเสี่ยงเซียมซีไปแล้ว พรุ่งนี้มาเสี่ยงใหม่ได้ตั้งแต่เที่ยงคืนค่ะ',
+  'ดูใบของวันนี้ซ้ำได้ที่ปุ่มด้านล่าง',
 ].join('\n');
+
+const LIMIT_QUICK_REPLY = {
+  items: [{ type: 'action', action: { type: 'message', label: '🎋 เปิดใบวันนี้อีกครั้ง', text: REVEAL_TEXT } }],
+};
 
 const QUICK_REPLY = {
   items: [
@@ -180,17 +202,24 @@ function handleText(text, userId, now = new Date(), limiter) {
     }
   }
 
+  // เปิดดูใบที่ได้ (กดจากปุ่มในการ์ดเขย่า) ใช้ได้เฉพาะคนที่เสี่ยงวันนี้แล้ว และได้ใบเดิมเสมอ
+  if (t === REVEAL_TEXT) {
+    const lim = limiter || getDefaultLimiter();
+    if (userId && !lim.hasDrawn(userId, bangkokDate(now))) {
+      return [withQuickReply({ type: 'text', text: 'วันนี้ยังไม่ได้เสี่ยงเซียมซีเลยค่ะ พิมพ์ "เสี่ยงเซียมซี" เพื่อเริ่มได้เลย 🙏' })];
+    }
+    return [buildFlex(pickDaily(userId || 'anonymous', now))];
+  }
+
   if (/เสี่ยง|เซียมซี|ดูดวง|ทำนาย|เขย่า/.test(t)) {
     if (userId) {
       const lim = limiter || getDefaultLimiter();
       if (!lim.tryDraw(userId, bangkokDate(now))) {
-        return [withQuickReply({ type: 'text', text: LIMIT_TEXT })];
+        return [{ type: 'text', text: LIMIT_TEXT, quickReply: LIMIT_QUICK_REPLY }];
       }
     }
-    return [
-      buildShakeFlex(),
-      buildFlex(pickDaily(userId || 'anonymous', now)),
-    ];
+    // ส่งการ์ดเขย่าก่อน แล้วให้ผู้ใช้กดปุ่มเปิดใบ จะได้ไม่พลาดการดูภาพเขย่า
+    return [buildShakeFlex()];
   }
 
   if (/^(วิธีใช้|เมนูเซียมซี|help)$/i.test(t)) {
@@ -200,4 +229,4 @@ function handleText(text, userId, now = new Date(), limiter) {
   return null; // ข้อความอื่น ปล่อยให้แอดมินตอบเอง
 }
 
-module.exports = { handleText, buildFlex, buildShakeFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT, LIMIT_TEXT };
+module.exports = { handleText, buildFlex, buildShakeFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT, LIMIT_TEXT, REVEAL_TEXT };

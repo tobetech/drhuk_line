@@ -38,7 +38,9 @@ const lim = createMemoryLimiter();
 assert.strictEqual(handleText('สวัสดีครับ แอดมินอยู่ไหม', 'U1', day1, lim), null);
 assert.strictEqual(handleText('ขอราคาสินค้า', 'U1', day1, lim), null);
 const first = handleText('เสี่ยงเซียมซี', 'U1', day1, lim);
-assert.ok(first.length === 2 && first[0].type === 'flex' && first[1].type === 'flex');
+assert.ok(first.length === 1 && first[0].type === 'flex', 'เสี่ยงครั้งแรกต้องได้เฉพาะการ์ดเขย่า');
+assert.strictEqual(first[0].contents.footer.contents[0].action.text, 'เปิดใบทำนาย');
+assert.ok(!JSON.stringify(first[0]).includes('ใบที่'), 'การ์ดเขย่าต้องยังไม่เฉลยใบ');
 const shakeImg = first[0].contents.body.contents[0];
 assert.strictEqual(shakeImg.animated, true);
 assert.ok(shakeImg.url.startsWith('https://') && shakeImg.url.endsWith('/assets/shake.png'));
@@ -52,8 +54,15 @@ assert.ok(!JSON.stringify(first).includes('สุ่ม'), 'ต้องไม�
 const again = handleText('เสี่ยงเซียมซี', 'U1', day1, lim);
 assert.ok(again.length === 1 && again[0].text.includes('จำกัดการเสี่ยงวันละ 1 ครั้ง'));
 assert.ok(handleText('สุ่มเซียมซี', 'U1', day1, lim)[0].text.includes('จำกัดการเสี่ยงวันละ 1 ครั้ง'));
-assert.ok(handleText('เสี่ยงเซียมซี', 'U2', day1, lim)[1].type === 'flex', 'คนอื่นยังเสี่ยงได้');
-assert.ok(handleText('เสี่ยงเซียมซี', 'U1', day2, lim)[1].type === 'flex', 'ข้ามวันเสี่ยงได้ใหม่');
+assert.ok(handleText('เสี่ยงเซียมซี', 'U2', day1, lim)[0].type === 'flex', 'คนอื่นยังเสี่ยงได้');
+// เปิดใบทำนาย: ได้ใบเดิมของวันนี้ ส่วนคนที่ยังไม่เสี่ยงต้องได้ข้อความให้เสี่ยงก่อน
+const rev = handleText('เปิดใบทำนาย', 'U1', day1, lim);
+assert.ok(rev.length === 1 && rev[0].type === 'flex' && rev[0].altText.includes('ใบที่ ' + pickDaily('U1', day1).no + ':'));
+assert.strictEqual(handleText('เปิดใบทำนาย', 'U1', day1, lim)[0].altText, rev[0].altText, 'เปิดซ้ำต้องได้ใบเดิม');
+assert.strictEqual(handleText('เปิดใบทำนาย', 'U55', day1, lim)[0].type, 'text', 'ยังไม่เสี่ยงต้องไม่เฉลยใบ');
+assert.ok(again[0].quickReply.items[0].action.text === 'เปิดใบทำนาย');
+assert.ok(handleText('เสี่ยงเซียมซี', 'U1', day2, lim)[0].type === 'flex', 'ข้ามวันเสี่ยงได้ใหม่');
+assert.strictEqual(handleText('เปิดใบทำนาย', 'U1', day2, lim)[0].type, 'flex');
 assert.strictEqual(handleText('ใบที่ 12', 'U9', day1, lim), null, 'ค้นตามเลขต้องปิดอยู่');
 assert.ok(handleText('วิธีใช้', 'U1', day1, lim)[0].text.includes('วันละ 1 ครั้ง'));
 process.env.ALLOW_LOOKUP = 'true';
@@ -66,6 +75,7 @@ const file = path.join(tmp, 'draws.json');
 const L1 = createFileLimiter({ file, salt: 's' });
 assert.strictEqual(L1.tryDraw('Uabc123', '2026-11-06'), true);
 const L2 = createFileLimiter({ file, salt: 's' }); // จำลองรีสตาร์ต
+assert.strictEqual(L2.hasDrawn('Uabc123', '2026-11-06'), true);
 assert.strictEqual(L2.tryDraw('Uabc123', '2026-11-06'), false);
 assert.strictEqual(L2.tryDraw('Uabc123', '2026-11-07'), true);
 assert.ok(!fs.readFileSync(file, 'utf8').includes('Uabc123'), 'ห้ามเก็บ User ID ตรงๆ');
