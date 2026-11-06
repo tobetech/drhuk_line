@@ -1,0 +1,19 @@
+{
+  "name": "siamsi-line-bot",
+  "version": "1.0.0",
+  "description": "LINE OA bot \u0e40\u0e2a\u0e35\u0e48\u0e22\u0e07\u0e40\u0e0b\u0e35\u0e22\u0e21\u0e0b\u0e35 60 \u0e43\u0e1a",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js",
+    "chat": "node dev-chat.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}

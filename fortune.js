@@ -1,0 +1,153 @@
+const { FORTUNES, LEVELS } = require('./fortunes');
+
+const DISCLAIMER = 'คำทำนายเพื่อความบันเทิงและเป็นกำลังใจ โปรดใช้วิจารณญาณในการตัดสินใจเรื่องสำคัญ';
+
+// วันที่ตามเวลาไทย (YYYY-MM-DD)
+function bangkokDate(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(now);
+}
+
+// FNV-1a hash
+function hash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// ผู้ใช้คนเดิมในวันเดียวกันได้ใบเดิม (กันการเขย่าซ้ำจนกว่าจะได้ใบที่ชอบ)
+function pickDaily(userId, now = new Date()) {
+  const idx = hash(`${userId}|${bangkokDate(now)}`) % FORTUNES.length;
+  return FORTUNES[idx];
+}
+
+function pickRandom() {
+  return FORTUNES[Math.floor(Math.random() * FORTUNES.length)];
+}
+
+function getByNumber(n) {
+  return FORTUNES[n - 1] || null;
+}
+
+function row(label, text) {
+  return {
+    type: 'box',
+    layout: 'vertical',
+    margin: 'md',
+    spacing: 'xs',
+    contents: [
+      { type: 'text', text: label, size: 'sm', weight: 'bold', color: '#8B5A2B' },
+      { type: 'text', text, size: 'sm', wrap: true, color: '#333333' },
+    ],
+  };
+}
+
+function buildFlex(f) {
+  const lv = LEVELS[f.level];
+  return {
+    type: 'flex',
+    altText: `เซียมซีใบที่ ${f.no}: ${f.title} (${lv.label})`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      header: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: lv.color,
+        paddingAll: 'lg',
+        contents: [
+          { type: 'text', text: `เซียมซีใบที่ ${f.no}`, color: '#FFFFFF', size: 'sm', align: 'center' },
+          { type: 'text', text: f.title, color: '#FFFFFF', size: 'xl', weight: 'bold', align: 'center', wrap: true, margin: 'sm' },
+          { type: 'text', text: `${lv.emoji} ดวง${lv.label}`, color: '#FFFFFF', size: 'md', align: 'center', margin: 'sm' },
+        ],
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#FFF8E7',
+        paddingAll: 'lg',
+        contents: [
+          { type: 'text', text: f.poem, wrap: true, size: 'sm', align: 'center', color: '#5A3E1B', style: 'italic' },
+          { type: 'separator', margin: 'lg' },
+          row('💼 การงาน', f.work),
+          row('💰 การเงิน', f.money),
+          row('❤️ ความรัก', f.love),
+          row('🌱 สุขภาพ', f.health),
+          { type: 'separator', margin: 'lg' },
+          { type: 'text', text: DISCLAIMER, size: 'xxs', color: '#999999', wrap: true, margin: 'md' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'button',
+            style: 'link',
+            height: 'sm',
+            action: { type: 'message', label: 'ดูใบอื่นๆ (สุ่มใหม่)', text: 'สุ่มเซียมซี' },
+          },
+        ],
+      },
+    },
+  };
+}
+
+const HELP_TEXT = [
+  '🙏 ยินดีต้อนรับสู่เซียมซีออนไลน์ (60 ใบ)',
+  '',
+  'พิมพ์คำสั่งได้เลย:',
+  '• "เสี่ยงเซียมซี" – รับคำทำนายประจำวัน (วันละ 1 ใบ)',
+  '• "สุ่มเซียมซี" – สุ่มใบใหม่ได้เรื่อยๆ',
+  '• "ใบที่ 12" หรือ "12" – ดูใบที่ต้องการ (1-60)',
+  '• "วิธีใช้" – ดูข้อความนี้อีกครั้ง',
+  '',
+  'ตั้งจิตอธิษฐานก่อนเสี่ยงทุกครั้งนะคะ 🪷',
+].join('\n');
+
+const QUICK_REPLY = {
+  items: [
+    { type: 'action', action: { type: 'message', label: '🎋 เสี่ยงเซียมซี', text: 'เสี่ยงเซียมซี' } },
+    { type: 'action', action: { type: 'message', label: '🎲 สุ่มใหม่', text: 'สุ่มเซียมซี' } },
+    { type: 'action', action: { type: 'message', label: '❓ วิธีใช้', text: 'วิธีใช้' } },
+  ],
+};
+
+function withQuickReply(msg) {
+  return { ...msg, quickReply: QUICK_REPLY };
+}
+
+// รับข้อความ คืน array ของ message ที่จะตอบกลับ (หรือ null ถ้าไม่ต้องตอบ)
+function handleText(text, userId, now = new Date()) {
+  const t = (text || '').trim().replace(/\s+/g, ' ');
+  if (!t) return null;
+
+  const num = t.match(/^(?:ใบที่|ใบ|เบอร์)?\s*(\d{1,3})$/);
+  if (num) {
+    const f = getByNumber(Number(num[1]));
+    if (!f) return [withQuickReply({ type: 'text', text: 'มีเซียมซีให้เลือกเฉพาะใบที่ 1 ถึง 60 ค่ะ 🙏' })];
+    return [withQuickReply(buildFlex(f))];
+  }
+
+  if (/สุ่ม/.test(t)) {
+    return [withQuickReply(buildFlex(pickRandom()))];
+  }
+
+  if (/เสี่ยง|เซียมซี|ดูดวง|ทำนาย|เขย่า/.test(t)) {
+    const f = pickDaily(userId || 'anonymous', now);
+    return [
+      { type: 'text', text: '🙏 ตั้งจิตอธิษฐาน... กำลังเขย่ากระบอกเซียมซี 🎋' },
+      withQuickReply(buildFlex(f)),
+    ];
+  }
+
+  if (/^(วิธีใช้|เมนูเซียมซี|help)$/i.test(t)) {
+    return [withQuickReply({ type: 'text', text: HELP_TEXT })];
+  }
+
+  return null; // ข้อความอื่น ปล่อยให้แอดมินตอบเอง
+}
+
+module.exports = { handleText, buildFlex, pickDaily, pickRandom, getByNumber, bangkokDate, HELP_TEXT };
