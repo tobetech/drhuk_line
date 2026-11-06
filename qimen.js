@@ -206,13 +206,42 @@ const inFlight = new Set();
 const publicBase = () => (process.env.PUBLIC_BASE_URL || 'https://line.dr-huk.com').replace(/\/+$/, '');
 const quick = (label, text) => ({ type: 'action', action: { type: 'message', label, text } });
 
+// ลิงก์หน้าเว็บสำหรับดูฤกษ์ยามเพิ่ม (https เท่านั้น) ตั้งที่ QIMEN_WEB_URL
+function webUrl() {
+  const u = (process.env.QIMEN_WEB_URL || '').trim();
+  return /^https:\/\/\S+$/.test(u) ? u : '';
+}
+
 function limitMessages(payOn, price) {
-  const msg = { type: 'text', text: QIMEN_LIMIT_TEXT };
   if (payOn) {
-    msg.text += `\nต้องการดูเพิ่มตอนนี้ ชำระ ${price} บาท ต่อ 1 ครั้งได้ที่ปุ่มด้านล่างค่ะ`;
-    msg.quickReply = { items: [quick(`💳 ดูเพิ่ม ${price} บาท`, BUY_TEXT)] };
+    return [{
+      type: 'text',
+      text: `${QIMEN_LIMIT_TEXT}\nต้องการดูเพิ่มตอนนี้ ชำระ ${price} บาท ต่อ 1 ครั้งได้ที่ปุ่มด้านล่างค่ะ`,
+      quickReply: { items: [quick(`💳 ดูเพิ่ม ${price} บาท`, BUY_TEXT)] },
+    }];
   }
-  return [msg];
+  const url = webUrl();
+  if (!url) {
+    return [{ type: 'text', text: `${QIMEN_LIMIT_TEXT}\nการดูฤกษ์ยามเพิ่มเติมเร็วๆ นี้จะเปิดให้บริการผ่านเว็บไซต์ค่ะ 🙏` }];
+  }
+  return [{
+    type: 'flex',
+    altText: 'จำกัดการดูฤกษ์ยามวันละ 1 ครั้ง ดูเพิ่มเติมผ่านเว็บไซต์ได้',
+    contents: {
+      type: 'bubble',
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '14px',
+        contents: [
+          { type: 'text', text: QIMEN_LIMIT_TEXT, wrap: true, size: 'sm', color: '#333333' },
+          { type: 'text', text: 'ต้องการดูเพิ่มเติม เปิดหน้าเว็บได้ที่ปุ่มด้านล่าง', wrap: true, size: 'sm', color: '#555555' },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '10px',
+        contents: [{ type: 'button', style: 'primary', color: '#2F3A5F', height: 'sm', action: { type: 'uri', label: '🧭 ดูฤกษ์ยามเพิ่มที่เว็บไซต์', uri: url } }],
+      },
+    },
+  }];
 }
 
 function thaiClock(ms) {

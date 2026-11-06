@@ -85,11 +85,13 @@ def _forward_to_bot(order_id):
 @app.route("/v1/ksher/notify", methods=["POST"])
 def v1_ksher_notify():
     raw = request.get_data(as_text=True)[:4000]
-    print("Ksher notify raw:", raw)
+    print("Ksher notify received, bytes:", len(raw))
     m = re.search(r"qimen\\d{10}[0-9a-f]{6}", raw)
     if m:
         threading.Thread(target=_forward_to_bot, args=(m.group(0),), daemon=True).start()
-    return "SUCCESS"
+    # Ksher ต้องการคำตอบเป็น JSON {"result": "SUCCESS", "msg": "OK"} ไม่เช่นนั้นจะส่งซ้ำสูงสุด 12 ครั้ง
+    ack = os.environ.get("KSHER_NOTIFY_ACK", '{"result": "SUCCESS", "msg": "OK"}')
+    return app.response_class(ack, mimetype="application/json")
 
 
 '''

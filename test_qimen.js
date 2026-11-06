@@ -72,6 +72,15 @@ const okFetch = (calls) => async (url, init) => {
   // ครั้งที่สองวันเดียวกัน ถูกจำกัด และไม่เรียก gateway ซ้ำ
   const again = await handleQimenText('ดูฤกษ์ ความรัก', 'U1', { limiter: lim, now, fetchFn: okFetch(calls) });
   assert.ok(again[0].text.includes('จำกัดการดูฤกษ์ยามวันละ 1 ครั้ง'));
+  assert.ok(again[0].text.includes('เร็วๆ นี้'), 'ยังไม่มีเว็บ: ต้องบอกว่าเร็วๆ นี้');
+  // มีลิงก์เว็บ: ส่งปุ่มลิงก์ (รับเฉพาะ https)
+  process.env.QIMEN_WEB_URL = 'http://bad.example';
+  assert.ok((await handleQimenText('ดูฤกษ์ ความรัก', 'U1', { limiter: lim, now, fetchFn: okFetch(calls) }))[0].text, 'http ไม่ถูกใช้');
+  process.env.QIMEN_WEB_URL = 'https://qimen.example.com/read';
+  const web = await handleQimenText('ดูฤกษ์ ความรัก', 'U1', { limiter: lim, now, fetchFn: okFetch(calls) });
+  assert.strictEqual(web[0].type, 'flex');
+  assert.ok(JSON.stringify(web[0]).includes('"uri":"https://qimen.example.com/read"'));
+  delete process.env.QIMEN_WEB_URL;
   assert.strictEqual(calls.length, 1);
   const again2 = await handleQimenText('ดูฤกษ์ยาม', 'U1', { limiter: lim, now, fetchFn: okFetch(calls) });
   assert.ok(again2[0].text.includes('จำกัด'));
