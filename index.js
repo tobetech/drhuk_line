@@ -3,8 +3,8 @@ const path = require('path');
 const express = require('express');
 const line = require('@line/bot-sdk');
 const { handleText, HELP_TEXT } = require('./fortune');
-const { handleQimenText } = require('./qimen');
-const { getDefaultPayStore, qrPngBuffer } = require('./qimen_pay');
+const { handleQimenText, settleOrder } = require('./qimen');
+const { getDefaultPayStore, qrPngBuffer, verifyNotify } = require('./qimen_pay');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
@@ -30,6 +30,21 @@ app.get('/privacy', (_req, res) => res.sendFile(path.join(pub, 'privacy.html')))
 app.get('/terms', (_req, res) => res.sendFile(path.join(pub, 'terms.html')));
 app.use('/assets', express.static(path.join(pub, 'assets'), { maxAge: '7d' }));
 app.get('/style.css', (_req, res) => res.sendFile(path.join(pub, 'style.css')));
+
+// สัญญาณจาก gateway ว่าออเดอร์อาจจ่ายแล้ว (เซ็น HMAC) ไม่เชื่อเนื้อหา แต่ยืนยันกับ Ksher ผ่าน gateway อีกครั้งก่อนให้สิทธิ์
+app.post('/internal/payment-notify', express.raw({ type: '*/*', limit: '4kb' }), async (req, res) => {
+  const secret = process.env.QIMEN_NOTIFY_SECRET;
+  if (!secret) return res.sendStatus(503);
+  let body = {};
+  try { body = JSON.parse(req.body.toString('utf8')); } catch (_) { return res.sendStatus(400); }
+  if (!verifyNotify(secret, body.ts, body.order_id, req.get('X-Notify-Signature'))) return res.sendStatus(401);
+  const result = await settleOrder(body.order_id, {
+    payStore: getDefaultPayStore(),
+    fetchFn: app.get('qimenFetch'),
+    push: app.get('qimenPush') || ((to, messages) => client.pushMessage({ to, messages })),
+  });
+  res.json({ ok: true, result });
+});
 
 // รูป QR สำหรับชำระเงิน (รหัสออเดอร์เดาไม่ได้ และมีอายุแค่ช่วงรอชำระ)
 app.get('/qr/:file', async (req, res) => {

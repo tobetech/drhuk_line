@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const QRCode = require('qrcode');
 
 const PENDING_TTL_MS = 2 * 60 * 60 * 1000;   // ออเดอร์ที่ยังไม่จ่ายเก็บไว้ตรวจ 2 ชั่วโมง
-const REUSE_MS = 10 * 60 * 1000;             // กดซื้อซ้ำภายใน 10 นาที ใช้ QR เดิม
+const QR_TTL_SEC = 600;                      // QR มีอายุ 10 นาที หลังจากนั้น gateway ปิดออเดอร์
+const REUSE_MS = QR_TTL_SEC * 1000;          // กดซื้อซ้ำภายในช่วงนี้ ใช้ QR เดิม
 const MAX_PENDING = 3;
 const MAX_CONSUMED = 2000;
 
@@ -85,6 +86,14 @@ function createPayStore({ file, salt = 'siamsi' } = {}) {
       }
       return null;
     },
+    // คืน { uid, order } ของออเดอร์ที่ยังรอชำระ (uid ถูกลบพร้อมออเดอร์เมื่อจ่ายแล้วหรือหมดอายุ)
+    findOwner(orderId) {
+      for (const r of Object.values(state.users)) {
+        const o = r.pending.find((x) => x.id === orderId);
+        if (o && o.uid) return { uid: o.uid, order: o };
+      }
+      return null;
+    },
   };
 }
 
@@ -124,7 +133,7 @@ async function createOrder(fetchFn) {
   const r = await gatewayJson(`${c.base}/v1/qr-payment/create`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ license_key: c.licenseKey, machine_id: c.machineId }),
+    body: JSON.stringify({ license_key: c.licenseKey, machine_id: c.machineId, notify: true, expire_seconds: QR_TTL_SEC }),
   }, fetchFn);
   if (!r.ok || r.data.error || !r.data.order_id) {
     throw new Error(`create ${r.status}: ${r.data.error || 'ตอบกลับไม่ถูกต้อง'}`);
@@ -134,7 +143,7 @@ async function createOrder(fetchFn) {
   }
   const qr = normalizeQr(r.data.qr_display);
   if (!qr) throw new Error('ไม่พบ QR ในคำตอบ');
-  return { id: String(r.data.order_id), amount: c.price, qr };
+  return { id: String(r.data.order_id), amount: c.price, qr, expires: Date.now() + QR_TTL_SEC * 1000 };
 }
 
 // คืน 'paid' | 'waiting' | 'notfound' หรือโยน error ถ้าตรวจไม่ได้
@@ -160,6 +169,19 @@ async function logSale(topicKey, fetchFn) {
   }
 }
 
+
+// สัญญาณจาก gateway: HMAC-SHA256(secret, `${ts}.${orderId}`) และต้องไม่เก่าเกิน 5 นาที
+function verifyNotify(secret, ts, orderId, signature, nowMs = Date.now()) {
+  if (!secret || !ts || !orderId || !signature) return false;
+  if (!/^qimen\d{10}[0-9a-f]{6}$/.test(String(orderId))) return false;
+  const age = Math.abs(nowMs / 1000 - Number(ts));
+  if (!(age <= 300)) return false;
+  const expected = crypto.createHmac('sha256', secret).update(`${ts}.${orderId}`).digest();
+  let given;
+  try { given = Buffer.from(String(signature), 'hex'); } catch (_) { return false; }
+  return given.length === expected.length && crypto.timingSafeEqual(given, expected);
+}
+
 let defaultStore = null;
 function getDefaultPayStore() {
   if (!defaultStore) {
@@ -171,5 +193,5 @@ function getDefaultPayStore() {
 
 module.exports = {
   payConfig, createPayStore, getDefaultPayStore, normalizeQr, qrPngBuffer,
-  createOrder, orderStatus, logSale, REUSE_MS,
+  createOrder, orderStatus, logSale, verifyNotify, REUSE_MS, QR_TTL_SEC,
 };

@@ -87,3 +87,9 @@ vercel --prod
 เปิดด้วย `QIMEN_PAY_ENABLED=true` ต้องตั้ง `"price_qr": 19` ใน license ของบอทที่ gateway (บอทจะไม่ยอมแสดง QR ถ้าราคาที่ gateway ไม่ตรงกับ `QIMEN_PRICE_THB`)
 ผู้ใช้ใช้สิทธิ์ฟรีของวันแล้วพิมพ์ "ซื้อฤกษ์ยาม" → สแกน QR → กด "ฉันชำระแล้ว" → ได้สิทธิ์ 1 ครั้ง (ไม่หมดอายุ) เก็บที่ `data/qimen_pay.json` (รหัสผู้ใช้เข้ารหัสทางเดียว)
 ไม่มี webhook จาก Ksher จึงตรวจด้วยการกดปุ่ม ถ้า gateway รีสตาร์ตระหว่างรอ ออเดอร์ที่ค้างอยู่ในหน่วยความจำจะหาไม่เจอ บอทจะแจ้งรหัสอ้างอิงให้ส่งหาแอดมิน
+
+#### Webhook ชำระเงิน (แทนการให้ผู้ใช้กดปุ่ม)
+Ksher → `POST /v1/ksher/notify` ที่ gateway → gateway ส่งสัญญาณเซ็น HMAC ไป `POST /internal/payment-notify` ของบอท → บอทถาม Ksher ซ้ำผ่าน gateway
+ว่าจ่ายจริงไหม (ไม่เชื่อเนื้อหา callback) → ให้สิทธิ์ 1 ครั้ง แล้ว push ข้อความแจ้งผู้ใช้ ปุ่ม "ตรวจสถานะ" ยังอยู่เป็นตัวสำรอง
+QR อายุ 10 นาที (gateway เรียก order_close หลังหมดเวลา) ติดตั้งแพตช์ gateway ด้วย `deploy/gateway-webhook-patch.py`
+ตั้ง `LINE_BOT_NOTIFY_URL` และ `LINE_BOT_NOTIFY_SECRET` ที่ `.env` ของ gateway และ `QIMEN_NOTIFY_SECRET` (ค่าเดียวกัน) ที่ `.env` ของบอท

@@ -215,6 +215,10 @@ function limitMessages(payOn, price) {
   return [msg];
 }
 
+function thaiClock(ms) {
+  return new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ms));
+}
+
 function buildPayFlex(order, price) {
   const imgUrl = order.qr.type === 'url' ? order.qr.url : `${publicBase()}/qr/${encodeURIComponent(order.id)}.png`;
   return {
@@ -233,13 +237,14 @@ function buildPayFlex(order, price) {
         type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '14px',
         contents: [
           { type: 'image', url: imgUrl, size: 'full', aspectMode: 'fit', aspectRatio: '1:1' },
-          { type: 'text', text: `1. บันทึกรูป QR หรือสแกนจากอีกเครื่อง แล้วจ่าย ${price} บาท ผ่านแอปธนาคาร\n2. จ่ายเสร็จ กดปุ่ม "ฉันชำระแล้ว" ด้านล่าง\n3. ได้สิทธิ์ดูฤกษ์ยาม 1 ครั้ง (ไม่หมดอายุตอนเที่ยงคืน)`, size: 'sm', wrap: true, color: '#444444' },
+          { type: 'text', text: `⏳ QR ใช้ได้ถึง ${thaiClock(order.expires || (order.created + pay.REUSE_MS))} น. (10 นาที)`, size: 'sm', weight: 'bold', color: '#B8322A', wrap: true },
+          { type: 'text', text: `1. บันทึกรูป QR หรือสแกนจากอีกเครื่อง แล้วจ่าย ${price} บาท ผ่านแอปธนาคาร\n2. จ่ายเสร็จระบบแจ้งในแชทนี้อัตโนมัติ ได้สิทธิ์ดูฤกษ์ยาม 1 ครั้ง (ไม่หมดอายุตอนเที่ยงคืน)\n3. ถ้ายังไม่ได้รับแจ้งใน 1 นาที กดปุ่ม "ตรวจสถานะ" ด้านล่าง`, size: 'sm', wrap: true, color: '#444444' },
           { type: 'text', text: `รหัสอ้างอิง ${order.id}`, size: 'xxs', color: '#999999', wrap: true },
         ],
       },
       footer: {
         type: 'box', layout: 'vertical', paddingAll: '10px',
-        contents: [{ type: 'button', style: 'primary', color: '#2E7D32', height: 'sm', action: { type: 'message', label: '✅ ฉันชำระแล้ว', text: CHECK_TEXT } }],
+        contents: [{ type: 'button', style: 'secondary', height: 'sm', action: { type: 'message', label: '🔄 ตรวจสถานะ', text: CHECK_TEXT } }],
       },
     },
   };
@@ -267,8 +272,59 @@ async function handleBuy(userId, opts) {
       return [{ type: 'text', text: ERR_PAY }];
     }
     order.created = Date.now();
+    order.uid = userId;
     store.addPending(userId, order);
     return [buildPayFlex(order, c.price)];
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+// ตรวจออเดอร์เดียว: คืน 'granted' | 'paid-used' | 'waiting' | 'notfound' หรือโยน error
+// หลัง await ตรวจซ้ำว่ายังไม่ถูกใช้ แล้วให้เครดิตทันที (ไม่มี await คั่น) จึงไม่ให้ซ้ำแม้เรียกซ้อนกัน
+async function grantIfPaid(store, userId, o, fetchFn) {
+  const st = await pay.orderStatus(o.id, fetchFn);
+  if (st !== 'paid') return st;
+  let result = 'paid-used';
+  if (!store.isConsumed(o.id)) {
+    store.markConsumed(o.id);
+    store.addCredit(userId, 1);
+    result = 'granted';
+  }
+  store.removePending(userId, o.id);
+  return result;
+}
+
+const PAID_MESSAGES = (n) => [
+  { type: 'text', text: `✅ ได้รับการชำระเงินแล้วค่ะ ขอบคุณมาก คุณมีสิทธิ์ดูฤกษ์ยาม ${n} ครั้ง เลือกหัวข้อได้เลย` },
+  buildTopicMenuFlex(),
+];
+
+// webhook: gateway แจ้งว่าออเดอร์นี้อาจจ่ายแล้ว ยืนยันกับ Ksher ผ่าน gateway อีกครั้ง แล้วแจ้งผู้ใช้ด้วย push
+// opts: { payStore, fetchFn, push(uid, messages) }
+async function settleOrder(orderId, opts = {}) {
+  const store = opts.payStore || pay.getDefaultPayStore();
+  const owner = store.findOwner(orderId);
+  if (!owner) return 'unknown';
+  const key = `pay:${owner.uid}`;
+  if (inFlight.has(key)) return 'busy';
+  inFlight.add(key);
+  try {
+    let r;
+    try {
+      r = await grantIfPaid(store, owner.uid, owner.order, opts.fetchFn);
+    } catch (err) {
+      console.error('qimen settle error:', err.message);
+      return 'error';
+    }
+    if (r === 'granted' && opts.push) {
+      try {
+        await opts.push(owner.uid, PAID_MESSAGES(store.credits(owner.uid)));
+      } catch (err) {
+        console.error('qimen push error:', err.message);
+      }
+    }
+    return r;
   } finally {
     inFlight.delete(key);
   }
@@ -279,48 +335,42 @@ async function handleCheck(userId, opts) {
   if (!c.enabled) return [{ type: 'text', text: 'บริการดูฤกษ์ยามเพิ่มเติมยังไม่เปิดให้ใช้งานค่ะ 🙏' }];
   if (!userId) return [{ type: 'text', text: 'การชำระเงินใช้ได้เฉพาะในแชทส่วนตัวกับบัญชีนี้ค่ะ 🙏' }];
   const store = opts.payStore || pay.getDefaultPayStore();
+  const buyReply = { items: [quick(`💳 ดูเพิ่ม ${c.price} บาท`, BUY_TEXT)] };
   const pending = store.getPending(userId);
   if (pending.length === 0) {
     const n = store.credits(userId);
     if (n > 0) return [{ type: 'text', text: `คุณมีสิทธิ์ดูฤกษ์ยามที่ชำระแล้วคงเหลือ ${n} ครั้ง เลือกหัวข้อได้เลยค่ะ` }, buildTopicMenuFlex()];
-    return [{ type: 'text', text: 'ยังไม่มีรายการรอชำระเงินค่ะ ต้องการดูเพิ่มพิมพ์ "ซื้อฤกษ์ยาม" ได้เลย', quickReply: { items: [quick(`💳 ดูเพิ่ม ${c.price} บาท`, BUY_TEXT)] } }];
+    return [{ type: 'text', text: 'ยังไม่มีรายการรอชำระเงินค่ะ ต้องการดูเพิ่มพิมพ์ "ซื้อฤกษ์ยาม" ได้เลย', quickReply: buyReply }];
   }
   const key = `pay:${userId}`;
   if (inFlight.has(key)) return [{ type: 'text', text: 'กำลังตรวจสอบอยู่ค่ะ รอสักครู่นะคะ 🙏' }];
   inFlight.add(key);
   try {
-    let granted = 0; let failed = false; let notFound = 0;
+    let granted = 0; let failed = false; let notFound = 0; let waiting = 0;
     for (const o of pending) {
-      let st;
+      let r;
       try {
-        st = await pay.orderStatus(o.id, opts.fetchFn);
+        r = await grantIfPaid(store, userId, o, opts.fetchFn);
       } catch (err) {
         console.error('qimen pay status error:', err.message);
         failed = true; continue;
       }
-      if (st === 'notfound') { notFound += 1; console.error('qimen pay: ไม่พบออเดอร์ที่ gateway', o.id); continue; }
-      // หลัง await ตรวจซ้ำว่าออเดอร์นี้ยังไม่ถูกใช้ แล้วให้เครดิตทันที (ไม่มี await คั่น)
-      if (st === 'paid') {
-        if (!store.isConsumed(o.id)) {
-          store.markConsumed(o.id);
-          store.addCredit(userId, 1);
-          granted += 1;
-        }
-        store.removePending(userId, o.id);
-      }
+      if (r === 'granted') granted += 1;
+      else if (r === 'notfound') { notFound += 1; console.error('qimen pay: ไม่พบออเดอร์ที่ gateway', o.id); }
+      else if (r === 'waiting') waiting += 1;
     }
-    if (granted > 0) {
-      return [
-        { type: 'text', text: `✅ ได้รับการชำระเงินแล้วค่ะ ขอบคุณมาก คุณมีสิทธิ์ดูฤกษ์ยาม ${store.credits(userId)} ครั้ง เลือกหัวข้อได้เลย` },
-        buildTopicMenuFlex(),
-      ];
-    }
-    const again = { items: [quick('✅ ตรวจอีกครั้ง', CHECK_TEXT)] };
+    if (granted > 0) return PAID_MESSAGES(store.credits(userId));
+    const again = { items: [quick('🔄 ตรวจอีกครั้ง', CHECK_TEXT)] };
     if (failed) return [{ type: 'text', text: 'ตรวจสอบสถานะไม่สำเร็จชั่วคราว กดตรวจอีกครั้งในอีกสักครู่นะคะ หากจ่ายแล้วเงินไม่หาย สิทธิ์ของคุณยังอยู่ค่ะ 🙏', quickReply: again }];
     if (notFound === pending.length) {
       return [{ type: 'text', text: `ไม่พบรายการนี้ในระบบ หากคุณชำระเงินแล้ว กรุณาส่งรหัสอ้างอิงนี้ให้แอดมินตรวจสอบค่ะ\n${pending.map((o) => o.id).join('\n')}` }];
     }
-    return [{ type: 'text', text: 'ยังไม่พบการชำระเงินค่ะ หากเพิ่งจ่าย รอสัก 10-30 วินาทีแล้วกดตรวจอีกครั้งนะคะ', quickReply: again }];
+    const now = Date.now();
+    const alive = pending.filter((o) => now < (o.expires || (o.created + pay.REUSE_MS)));
+    if (waiting > 0 && alive.length === 0) {
+      return [{ type: 'text', text: 'QR นี้หมดเวลาแล้วค่ะ (เกิน 10 นาที) หากยังไม่ได้จ่าย ขอ QR ใหม่ได้ที่ปุ่มด้านล่างนะคะ', quickReply: buyReply }];
+    }
+    return [{ type: 'text', text: 'ยังไม่พบการชำระเงินค่ะ หากเพิ่งจ่าย รอสักครู่แล้วกดตรวจอีกครั้งนะคะ', quickReply: again }];
   } finally {
     inFlight.delete(key);
   }
@@ -393,6 +443,6 @@ async function handleQimenText(text, userId, opts = {}) {
 }
 
 module.exports = {
-  handleQimenText, buildTopicMenuFlex, buildResultFlex, buildPayFlex, fetchReading, beijingToThai,
+  handleQimenText, settleOrder, buildTopicMenuFlex, buildResultFlex, buildPayFlex, fetchReading, beijingToThai,
   TOPICS, QIMEN_LIMIT_TEXT, BUY_TEXT, CHECK_TEXT, isEnabled,
 };
