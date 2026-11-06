@@ -4,6 +4,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const { handleText, HELP_TEXT } = require('./fortune');
 const { handleQimenText } = require('./qimen');
+const { getDefaultPayStore, qrPngBuffer } = require('./qimen_pay');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
@@ -29,6 +30,15 @@ app.get('/privacy', (_req, res) => res.sendFile(path.join(pub, 'privacy.html')))
 app.get('/terms', (_req, res) => res.sendFile(path.join(pub, 'terms.html')));
 app.use('/assets', express.static(path.join(pub, 'assets'), { maxAge: '7d' }));
 app.get('/style.css', (_req, res) => res.sendFile(path.join(pub, 'style.css')));
+
+// รูป QR สำหรับชำระเงิน (รหัสออเดอร์เดาไม่ได้ และมีอายุแค่ช่วงรอชำระ)
+app.get('/qr/:file', async (req, res) => {
+  const id = String(req.params.file).replace(/\.png$/i, '');
+  const order = /^[A-Za-z0-9_-]{8,64}$/.test(id) ? getDefaultPayStore().findOrder(id) : null;
+  const png = order ? await qrPngBuffer(order).catch(() => null) : null;
+  if (!png) return res.sendStatus(404);
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, max-age=600' }).send(png);
+});
 
 // middleware ตรวจ X-Line-Signature ให้อัตโนมัติ (ห้ามใส่ express.json() ก่อน route นี้)
 app.post('/webhook', line.middleware({ channelSecret: config.channelSecret }), async (req, res) => {

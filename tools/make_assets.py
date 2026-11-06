@@ -142,6 +142,63 @@ def build_richmenu(path):
     d.rectangle([0, 0, RW, 10], fill=GOLD)
     im.save(path, 'JPEG', quality=92, optimize=True)
 
+def build_richmenu3(path):
+    """Rich Menu 3 ปุ่ม: เสี่ยงเซียมซี | ดูฤกษ์ยาม | วิธีใช้ (แต่ละปุ่มกว้าง ~833 px)"""
+    RW, RH = 2500, 843
+    X1, X2 = 833, 1666
+    im = Image.new('RGB', (RW, RH))
+    px = im.load()
+    for y in range(RH):
+        for x in range(RW):
+            if x < X1:                                   # ซ้าย: แดงไล่เฉด
+                k = 0.5 * (y / RH) + 0.5 * (x / X1)
+                px[x, y] = (int(176 - 48 * k), int(40 - 14 * k), int(36 - 12 * k))
+            elif x < X2:                                 # กลาง: น้ำเงินกรมท่าไล่เฉด
+                k = 0.5 * (y / RH) + 0.5 * ((x - X1) / (X2 - X1))
+                px[x, y] = (int(54 - 20 * k), int(66 - 22 * k), int(112 - 36 * k))
+            else:
+                px[x, y] = CREAM                         # ขวา: ครีม
+    d = ImageDraw.Draw(im)
+    GOLD, LGOLD, DREDT = (227, 178, 60), (246, 215, 122), (143, 35, 32)
+
+    # ปุ่ม 1: กระบอกเซียมซี
+    ic = canister_layer().crop((150 * S, 34 * S, 330 * S, 336 * S))
+    th = 400
+    ic = ic.resize((int(ic.width * th / ic.height), th), Image.LANCZOS)
+    im.paste(ic, ((X1 - ic.width) // 2, 70), ic)
+    d.text((X1 // 2, 560), 'เสี่ยงเซียมซี', font=fit_font('เสี่ยงเซียมซี', 110, 700), fill=LGOLD, anchor='mm')
+    d.text((X1 // 2, 690), 'วันละ 1 ครั้ง', font=fit_font('วันละ 1 ครั้ง', 56, 700), fill=(255, 226, 190), anchor='mm')
+
+    # ปุ่ม 2: ผังเก้าวัง (3x3) เน้นช่องหนึ่ง
+    cx, size, gap = (X1 + X2) // 2, 112, 14
+    gx0 = cx - (3 * size + 2 * gap) // 2
+    gy0 = 90
+    for r in range(3):
+        for c in range(3):
+            x0, y0 = gx0 + c * (size + gap), gy0 + r * (size + gap)
+            on = (r, c) == (0, 2)
+            d.rounded_rectangle([x0, y0, x0 + size, y0 + size], radius=14,
+                                fill=GOLD if on else (92, 104, 156), outline=LGOLD if on else None, width=4)
+            if (r, c) == (1, 1):
+                m = x0 + size / 2, y0 + size / 2
+                d.polygon([(m[0], m[1] - 30), (m[0] + 30, m[1]), (m[0], m[1] + 30), (m[0] - 30, m[1])], fill=LGOLD)
+    d.text((cx, 560), 'ดูฤกษ์ยาม', font=fit_font('ดูฤกษ์ยาม', 110, 700), fill=LGOLD, anchor='mm')
+    d.text((cx, 690), 'ดูทิศ ดูจังหวะตามเวลา', font=fit_font('ดูทิศ ดูจังหวะตามเวลา', 56, 700), fill=(222, 228, 245), anchor='mm')
+
+    # ปุ่ม 3: วิธีใช้
+    cx3 = (X2 + RW) // 2
+    d.ellipse([cx3 - 130, 100, cx3 + 130, 360], fill=DREDT)
+    d.text((cx3, 232), '?', font=font(190), fill=LGOLD, anchor='mm')
+    d.text((cx3, 560), 'วิธีใช้', font=fit_font('วิธีใช้', 110, 700), fill=DREDT, anchor='mm')
+    d.text((cx3, 690), 'ดูคำสั่งทั้งหมด', font=fit_font('ดูคำสั่งทั้งหมด', 56, 700), fill=(120, 80, 60), anchor='mm')
+
+    # เส้นแบ่ง + กรอบทอง
+    for x in (X1, X2):
+        d.rectangle([x - 4, 0, x + 4, RH], fill=GOLD)
+    d.rectangle([0, RH - 14, RW, RH], fill=GOLD)
+    d.rectangle([0, 0, RW, 10], fill=GOLD)
+    im.save(path, 'JPEG', quality=92, optimize=True)
+
 if __name__ == '__main__':
     os.makedirs(os.path.join(ROOT, 'public', 'assets'), exist_ok=True)
     os.makedirs(os.path.join(ROOT, 'richmenu'), exist_ok=True)
@@ -151,6 +208,9 @@ if __name__ == '__main__':
     rm = os.path.join(ROOT, 'richmenu', 'richmenu.jpg')
     build_richmenu(rm)
     print('Rich menu', os.path.getsize(rm) // 1024, 'KB')
+    rm3 = os.path.join(ROOT, 'richmenu', 'richmenu3.jpg')
+    build_richmenu3(rm3)
+    print('Rich menu 3 ปุ่ม', os.path.getsize(rm3) // 1024, 'KB')
     # แผ่นตรวจดูเฟรม (ไม่ได้ใช้งานจริง)
     sheet = Image.new('RGB', (W * 4, H * 2))
     for i, k in enumerate([0, 3, 9, 14, 18, 20, 22, 23]):

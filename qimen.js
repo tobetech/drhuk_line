@@ -3,6 +3,7 @@
 const path = require('path');
 const { createFileLimiter } = require('./draws');
 const { bangkokDate } = require('./fortune');
+const pay = require('./qimen_pay');
 
 const TOPICS = [
   { key: 'overall', label: 'ภาพรวม', emoji: '🧭' },
@@ -16,6 +17,8 @@ const TOPIC_BY_LABEL = Object.fromEntries(TOPICS.map((t) => [t.label, t]));
 
 const MENU_TRIGGER = /ฤกษ์ยาม|ฉีเหมิน|ดูฤกษ์|ดูยาม/;
 const TOPIC_PICK = /^ดูฤกษ์\s*(.+)$/;
+const BUY_TEXT = 'ซื้อฤกษ์ยาม';
+const CHECK_TEXT = 'ตรวจการชำระเงิน';
 
 const QIMEN_LIMIT_TEXT = [
   '🙏 จำกัดการดูฤกษ์ยามวันละ 1 ครั้ง',
@@ -197,33 +200,166 @@ function getDefaultLimiter() {
   return defaultLimiter;
 }
 
+
 const inFlight = new Set();
 
+const publicBase = () => (process.env.PUBLIC_BASE_URL || 'https://line.dr-huk.com').replace(/\/+$/, '');
+const quick = (label, text) => ({ type: 'action', action: { type: 'message', label, text } });
+
+function limitMessages(payOn, price) {
+  const msg = { type: 'text', text: QIMEN_LIMIT_TEXT };
+  if (payOn) {
+    msg.text += `\nต้องการดูเพิ่มตอนนี้ ชำระ ${price} บาท ต่อ 1 ครั้งได้ที่ปุ่มด้านล่างค่ะ`;
+    msg.quickReply = { items: [quick(`💳 ดูเพิ่ม ${price} บาท`, BUY_TEXT)] };
+  }
+  return [msg];
+}
+
+function buildPayFlex(order, price) {
+  const imgUrl = order.qr.type === 'url' ? order.qr.url : `${publicBase()}/qr/${encodeURIComponent(order.id)}.png`;
+  return {
+    type: 'flex',
+    altText: `ชำระเงิน ${price} บาท เพื่อดูฤกษ์ยามเพิ่ม 1 ครั้ง`,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: '#2F3A5F', paddingAll: '14px',
+        contents: [
+          { type: 'text', text: `💳 ดูฤกษ์ยามเพิ่ม · ${price} บาท`, weight: 'bold', size: 'lg', color: '#FFFFFF' },
+          { type: 'text', text: 'ชำระด้วย QR Code (พร้อมเพย์/แอปธนาคาร)', size: 'xs', color: '#D9DEEF', margin: 'xs' },
+        ],
+      },
+      body: {
+        type: 'box', layout: 'vertical', spacing: 'md', paddingAll: '14px',
+        contents: [
+          { type: 'image', url: imgUrl, size: 'full', aspectMode: 'fit', aspectRatio: '1:1' },
+          { type: 'text', text: `1. บันทึกรูป QR หรือสแกนจากอีกเครื่อง แล้วจ่าย ${price} บาท ผ่านแอปธนาคาร\n2. จ่ายเสร็จ กดปุ่ม "ฉันชำระแล้ว" ด้านล่าง\n3. ได้สิทธิ์ดูฤกษ์ยาม 1 ครั้ง (ไม่หมดอายุตอนเที่ยงคืน)`, size: 'sm', wrap: true, color: '#444444' },
+          { type: 'text', text: `รหัสอ้างอิง ${order.id}`, size: 'xxs', color: '#999999', wrap: true },
+        ],
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '10px',
+        contents: [{ type: 'button', style: 'primary', color: '#2E7D32', height: 'sm', action: { type: 'message', label: '✅ ฉันชำระแล้ว', text: CHECK_TEXT } }],
+      },
+    },
+  };
+}
+
+const ERR_PAY = 'ขออภัย ระบบชำระเงินขัดข้องชั่วคราว ลองใหม่อีกครั้งภายหลังนะคะ (ยังไม่มีการตัดเงินจากคุณ) 🙏';
+
+async function handleBuy(userId, opts) {
+  const c = pay.payConfig();
+  if (!c.enabled) return [{ type: 'text', text: 'บริการดูฤกษ์ยามเพิ่มเติมยังไม่เปิดให้ใช้งานค่ะ 🙏' }];
+  if (!userId) return [{ type: 'text', text: 'การชำระเงินใช้ได้เฉพาะในแชทส่วนตัวกับบัญชีนี้ค่ะ 🙏' }];
+  const store = opts.payStore || pay.getDefaultPayStore();
+  const key = `pay:${userId}`;
+  if (inFlight.has(key)) return [{ type: 'text', text: 'กำลังสร้างรายการชำระเงินอยู่ค่ะ รอสักครู่นะคะ 🙏' }];
+  inFlight.add(key);
+  try {
+    const now = Date.now();
+    const fresh = store.getPending(userId, now).filter((o) => now - o.created < pay.REUSE_MS).pop();
+    if (fresh) return [buildPayFlex(fresh, c.price)];
+    let order;
+    try {
+      order = await pay.createOrder(opts.fetchFn);
+    } catch (err) {
+      console.error('qimen pay create error:', err.message);
+      return [{ type: 'text', text: ERR_PAY }];
+    }
+    order.created = Date.now();
+    store.addPending(userId, order);
+    return [buildPayFlex(order, c.price)];
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function handleCheck(userId, opts) {
+  const c = pay.payConfig();
+  if (!c.enabled) return [{ type: 'text', text: 'บริการดูฤกษ์ยามเพิ่มเติมยังไม่เปิดให้ใช้งานค่ะ 🙏' }];
+  if (!userId) return [{ type: 'text', text: 'การชำระเงินใช้ได้เฉพาะในแชทส่วนตัวกับบัญชีนี้ค่ะ 🙏' }];
+  const store = opts.payStore || pay.getDefaultPayStore();
+  const pending = store.getPending(userId);
+  if (pending.length === 0) {
+    const n = store.credits(userId);
+    if (n > 0) return [{ type: 'text', text: `คุณมีสิทธิ์ดูฤกษ์ยามที่ชำระแล้วคงเหลือ ${n} ครั้ง เลือกหัวข้อได้เลยค่ะ` }, buildTopicMenuFlex()];
+    return [{ type: 'text', text: 'ยังไม่มีรายการรอชำระเงินค่ะ ต้องการดูเพิ่มพิมพ์ "ซื้อฤกษ์ยาม" ได้เลย', quickReply: { items: [quick(`💳 ดูเพิ่ม ${c.price} บาท`, BUY_TEXT)] } }];
+  }
+  const key = `pay:${userId}`;
+  if (inFlight.has(key)) return [{ type: 'text', text: 'กำลังตรวจสอบอยู่ค่ะ รอสักครู่นะคะ 🙏' }];
+  inFlight.add(key);
+  try {
+    let granted = 0; let failed = false; let notFound = 0;
+    for (const o of pending) {
+      let st;
+      try {
+        st = await pay.orderStatus(o.id, opts.fetchFn);
+      } catch (err) {
+        console.error('qimen pay status error:', err.message);
+        failed = true; continue;
+      }
+      if (st === 'notfound') { notFound += 1; console.error('qimen pay: ไม่พบออเดอร์ที่ gateway', o.id); continue; }
+      // หลัง await ตรวจซ้ำว่าออเดอร์นี้ยังไม่ถูกใช้ แล้วให้เครดิตทันที (ไม่มี await คั่น)
+      if (st === 'paid') {
+        if (!store.isConsumed(o.id)) {
+          store.markConsumed(o.id);
+          store.addCredit(userId, 1);
+          granted += 1;
+        }
+        store.removePending(userId, o.id);
+      }
+    }
+    if (granted > 0) {
+      return [
+        { type: 'text', text: `✅ ได้รับการชำระเงินแล้วค่ะ ขอบคุณมาก คุณมีสิทธิ์ดูฤกษ์ยาม ${store.credits(userId)} ครั้ง เลือกหัวข้อได้เลย` },
+        buildTopicMenuFlex(),
+      ];
+    }
+    const again = { items: [quick('✅ ตรวจอีกครั้ง', CHECK_TEXT)] };
+    if (failed) return [{ type: 'text', text: 'ตรวจสอบสถานะไม่สำเร็จชั่วคราว กดตรวจอีกครั้งในอีกสักครู่นะคะ หากจ่ายแล้วเงินไม่หาย สิทธิ์ของคุณยังอยู่ค่ะ 🙏', quickReply: again }];
+    if (notFound === pending.length) {
+      return [{ type: 'text', text: `ไม่พบรายการนี้ในระบบ หากคุณชำระเงินแล้ว กรุณาส่งรหัสอ้างอิงนี้ให้แอดมินตรวจสอบค่ะ\n${pending.map((o) => o.id).join('\n')}` }];
+    }
+    return [{ type: 'text', text: 'ยังไม่พบการชำระเงินค่ะ หากเพิ่งจ่าย รอสัก 10-30 วินาทีแล้วกดตรวจอีกครั้งนะคะ', quickReply: again }];
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
 // คืน array ของ message หรือ null ถ้าข้อความนี้ไม่เกี่ยวกับฉีเหมิน
-// opts: { limiter, fetchFn, now, onStart }
+// opts: { limiter, payStore, fetchFn, now, onStart }
 async function handleQimenText(text, userId, opts = {}) {
   const t = (text || '').trim().replace(/\s+/g, ' ');
   if (!t) return null;
 
-  const pick = TOPIC_PICK.exec(t);
-  const topic = pick ? TOPIC_BY_LABEL[pick[1].trim()] : null;
+  if (t === BUY_TEXT) return handleBuy(userId, opts);
+  if (t === CHECK_TEXT) return handleCheck(userId, opts);
+
+  const picked = TOPIC_PICK.exec(t);
+  const topic = picked ? TOPIC_BY_LABEL[picked[1].trim()] : null;
   if (!topic && !MENU_TRIGGER.test(t)) return null;
 
   if (!isEnabled()) {
     return [{ type: 'text', text: 'บริการดูฤกษ์ยามยังไม่เปิดให้ใช้งานในขณะนี้ค่ะ 🙏' }];
   }
 
+  const c = pay.payConfig();
   const lim = opts.limiter || getDefaultLimiter();
+  const store = opts.payStore || (c.enabled ? pay.getDefaultPayStore() : null);
   const today = bangkokDate(opts.now || new Date());
-  const limitMsg = [{ type: 'text', text: QIMEN_LIMIT_TEXT }];
+  const usedFree = Boolean(userId) && lim.hasDrawn(userId, today);
+  const credits = c.enabled && userId && store ? store.credits(userId) : 0;
 
   if (!topic) {
-    if (userId && lim.hasDrawn(userId, today)) return limitMsg;
-    return [buildTopicMenuFlex()];
+    if (!usedFree) return [buildTopicMenuFlex()];
+    if (credits > 0) return [{ type: 'text', text: `วันนี้ใช้สิทธิ์ฟรีไปแล้ว แต่คุณมีสิทธิ์ที่ชำระแล้วคงเหลือ ${credits} ครั้ง เลือกหัวข้อได้เลยค่ะ` }, buildTopicMenuFlex()];
+    return limitMessages(c.enabled, c.price);
   }
 
+  const usePaid = usedFree;
+  if (usePaid && credits <= 0) return limitMessages(c.enabled, c.price);
+
   const key = userId || 'anonymous';
-  if (userId && lim.hasDrawn(userId, today)) return limitMsg;
   if (inFlight.has(key)) return [{ type: 'text', text: 'กำลังจัดผังให้อยู่ค่ะ รอสักครู่นะคะ 🙏' }];
 
   inFlight.add(key);
@@ -234,17 +370,29 @@ async function handleQimenText(text, userId, opts = {}) {
       result = await fetchReading(topic.key, opts.fetchFn);
     } catch (err) {
       console.error('qimen gateway error:', err.message);
-      return [{ type: 'text', text: 'ขออภัย ระบบฉีเหมินขัดข้องชั่วคราว ลองใหม่อีกครั้งภายหลังนะคะ (ยังไม่นับเป็นสิทธิ์ของวันนี้) 🙏' }];
+      const keep = usePaid ? 'สิทธิ์ที่ชำระแล้วของคุณยังอยู่' : 'ยังไม่นับเป็นสิทธิ์ของวันนี้';
+      return [{ type: 'text', text: `ขออภัย ระบบฉีเหมินขัดข้องชั่วคราว ลองใหม่อีกครั้งภายหลังนะคะ (${keep}) 🙏` }];
     }
     if (!result.chart || !result.chart.palaces) {
-      return [{ type: 'text', text: 'ขออภัย ได้รับข้อมูลผังไม่ครบ ลองใหม่อีกครั้งนะคะ (ยังไม่นับเป็นสิทธิ์ของวันนี้) 🙏' }];
+      const keep = usePaid ? 'สิทธิ์ที่ชำระแล้วของคุณยังอยู่' : 'ยังไม่นับเป็นสิทธิ์ของวันนี้';
+      return [{ type: 'text', text: `ขออภัย ได้รับข้อมูลผังไม่ครบ ลองใหม่อีกครั้งนะคะ (${keep}) 🙏` }];
     }
-    // นับสิทธิ์เฉพาะเมื่อได้ทั้งผังและคำแนะนำ
-    if (userId && result.reading && result.reading.trim()) lim.tryDraw(userId, today);
+    // ตัดสิทธิ์เฉพาะเมื่อได้ทั้งผังและคำแนะนำ
+    const delivered = Boolean(result.reading && result.reading.trim());
+    if (delivered) {
+      if (usePaid) {
+        if (store.useCredit(userId)) pay.logSale(topic.key, opts.fetchFn);
+      } else if (userId) {
+        lim.tryDraw(userId, today);
+      }
+    }
     return [buildResultFlex(result, topic)];
   } finally {
     inFlight.delete(key);
   }
 }
 
-module.exports = { handleQimenText, buildTopicMenuFlex, buildResultFlex, fetchReading, beijingToThai, TOPICS, QIMEN_LIMIT_TEXT, isEnabled };
+module.exports = {
+  handleQimenText, buildTopicMenuFlex, buildResultFlex, buildPayFlex, fetchReading, beijingToThai,
+  TOPICS, QIMEN_LIMIT_TEXT, BUY_TEXT, CHECK_TEXT, isEnabled,
+};
